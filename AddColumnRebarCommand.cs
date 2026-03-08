@@ -30,15 +30,18 @@ namespace add
                     TaskDialog.Show("Error", "El elemento seleccionado no es una columna.");
                     return Result.Failed;
                 }
-
-                double maxSpacingCenter = MnToFt(150);
-                double spacingEndZones = MnToFt(100); 
-
+                // The user can adjust these parameters as needed, or you can implement a UI to input them
+                //==========================================}
+                double spacingEndZones = MnToFt(100); // 100 mm
+                double maxSpacingCenter = MnToFt(150); // 150 mm
+                
+                int nBotton = 8; // Number of stirrups in the bottom confining zone
+                int nTop = 8; // Number of stirrups in the top confining zone
+                //=========================================
                 double minSpaceEnds = MnToFt(50);
-                int nBotton = 8;
-                int nTop = 8;
-
-                double minConf = MnToFt(500);
+                
+                // Ther first stirups of face floor or beam
+                double minConf = MnToFt(500); // 500 mm
 
                 RebarBarType tieBarType = new FilteredElementCollector(doc)
                     .OfClass(typeof(RebarBarType))
