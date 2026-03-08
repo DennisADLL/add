@@ -164,7 +164,7 @@ namespace add
             if (midAvailable > 1e-6)
             {
                 CreateTieSet(doc, column, tieBarType, profileWorld, normal,
-                    startOffsetFromBase: midStart,
+                    startOffsetFromBase: midStart /*+ AddColumnRebarCommand.MnToFt(10)*/,
                     runLength: midAvailable,
                     layout: LayoutKind.FixedSpacing,
                     spacing: maxSpacingCenter,
@@ -246,10 +246,19 @@ namespace add
                     spacing,
                     runLength,
                     true,
+                    true,
+                    true
+
+                );
+                acc.SetLayoutAsMaximumSpacing(
+                    spacing,
+                    runLength,
+                    true,
                     false,
                     false
 
                 );
+
             }
         }
 
