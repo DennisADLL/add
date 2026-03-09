@@ -22,14 +22,23 @@ namespace add
 
             try
             {
-                Reference r = uidoc.Selection.PickObject(ObjectType.Element, new ColumnSelectionFilter(), "Selecciona una columna estructural");
-                var col = doc.GetElement(r) as FamilyInstance;
+                IList<Reference> refs = uidoc.Selection.PickObjects(ObjectType.Element, new ColumnSelectionFilter(), "Selecciona una columna estructural");
+                
+                //var col = doc.GetElement(r) as FamilyInstance;
 
-                if (col == null)
+                List<FamilyInstance> columns = refs
+                    .Select(r => doc.GetElement(r))
+                    .OfType<FamilyInstance>()
+                    .Where(c => c.Category != null &&
+                                c.Category.Id.IntegerValue == (int)BuiltInCategory.OST_StructuralColumns)
+                    .ToList();
+
+                if (columns.Count == 0)
                 {
-                    TaskDialog.Show("Error", "El elemento seleccionado no es una columna.");
+                    TaskDialog.Show("Error", "Los elementos seleccionados no son columnas estructurales.");
                     return Result.Failed;
                 }
+
                 // The user can adjust these parameters as needed, or you can implement a UI to input them
                 //==========================================}
                 double spacingEndZones = MnToFt(100); // 100 mm
@@ -59,12 +68,14 @@ namespace add
                     .Cast<RebarHookType>()
                     .FirstOrDefault(h => h.Name == "Sísmico de estribo/tirante - 135°.");
 
-
+                int ok = 0;
                 using (Transaction tran = new Transaction(doc, "Crear estribos en columna"))
                 {
                     tran.Start();
-                    ColumnRebarService.CreateRebarZoned(
-                        doc, 
+                    foreach (FamilyInstance col in columns)
+                    {
+                        ColumnRebarService.CreateRebarZoned(
+                        doc,
                         col,
                         tieBarType,
                         hookType,
@@ -74,6 +85,9 @@ namespace add
                         nTop: nTop,
                         minConfLength: minConf
                         );
+                        
+                    }
+                    ok++;
                     tran.Commit();
                 }
 
