@@ -6,14 +6,11 @@ using Autodesk.Revit.UI.Selection;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace add
 {
     [Transaction(TransactionMode.Manual)]
-    public class AddColumnRebarCommand : IExternalCommand
+    public class AddBeamRebarCommand : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
@@ -22,58 +19,58 @@ namespace add
 
             try
             {
-                Reference r = uidoc.Selection.PickObject(ObjectType.Element, new ColumnSelectionFilter(), "Selecciona una columna estructural");
-                var col = doc.GetElement(r) as FamilyInstance;
+                Reference r = uidoc.Selection.PickObject(
+                    ObjectType.Element,
+                    new BeamSelectionFilter(),
+                    "Selecciona una viga estructural");
 
-                if (col == null)
+                var beam = doc.GetElement(r) as FamilyInstance;
+
+                if (beam == null)
                 {
-                    TaskDialog.Show("Error", "El elemento seleccionado no es una columna.");
+                    TaskDialog.Show("Error", "El elemento seleccionado no es una viga.");
                     return Result.Failed;
                 }
-                // The user can adjust these parameters as needed, or you can implement a UI to input them
-                //==========================================}
-                double spacingEndZones = MnToFt(100); // 100 mm
-                double maxSpacingCenter = MnToFt(150); // 150 mm
-                
-                int nBotton = 5; // Number of stirrups in the bottom confining zone
-                int nTop = 8; // Number of stirrups in the top confining zone
-                //=========================================
-                double minSpaceEnds = MnToFt(50);
-                
-                // Ther first stirups of face floor or beam
-                double minConf = MnToFt(500); // 500 mm
 
-                //RebarShape tieShape = new FilteredElementCollector(doc)
-                //    .OfClass(typeof(RebarShape))
-                //    .Cast<RebarShape>()
-                //    .FirstOrDefault(x => x.Name == "M_T1");
+                double spacingEndZones = MmToFt(100);   // 100 mm
+                double maxSpacingCenter = MmToFt(150); // 150 mm
 
-                
+                int nLeft = 5;   // zona confinada inicial
+                int nRight = 5;  // zona confinada final
+
+                double minConf = MmToFt(500); // longitud mínima de confinamiento
+                double cover = MmToFt(40);    // recubrimiento
+
                 RebarBarType tieBarType = new FilteredElementCollector(doc)
                     .OfClass(typeof(RebarBarType))
                     .Cast<RebarBarType>()
                     .FirstOrDefault();
+
+                if (tieBarType == null)
+                    throw new InvalidOperationException("No se encontró ningún RebarBarType.");
 
                 RebarHookType hookType = new FilteredElementCollector(doc)
                     .OfClass(typeof(RebarHookType))
                     .Cast<RebarHookType>()
                     .FirstOrDefault(h => h.Name == "Sísmico de estribo/tirante - 135°.");
 
-
-                using (Transaction tran = new Transaction(doc, "Crear estribos en columna"))
+                using (Transaction tran = new Transaction(doc, "Crear estribos en viga"))
                 {
                     tran.Start();
-                    ColumnRebarService.CreateRebarZoned(
-                        doc, 
-                        col,
+
+                    BeamRebarService.CreateRebarZoned(
+                        doc,
+                        beam,
                         tieBarType,
                         hookType,
-                        maxSpacingCenter: maxSpacingCenter,
-                        spacingEndZones: spacingEndZones,
-                        nBottom: nBotton,
-                        nTop: nTop,
-                        minConfLength: minConf
-                        );
+                        cover,
+                        maxSpacingCenter,
+                        spacingEndZones,
+                        nLeft,
+                        nRight,
+                        minConf
+                    );
+
                     tran.Commit();
                 }
 
@@ -88,20 +85,20 @@ namespace add
                 TaskDialog.Show("Error", ex.Message);
                 return Result.Failed;
             }
-
         }
 
-        public static double MnToFt(int mm)
+        public static double MmToFt(double mm)
         {
             return UnitUtils.ConvertToInternalUnits(mm, UnitTypeId.Millimeters);
         }
     }
 
-    public class ColumnSelectionFilter : ISelectionFilter
+    public class BeamSelectionFilter : ISelectionFilter
     {
         public bool AllowElement(Element elem)
         {
-            return elem.Category != null && elem.Category.Id.IntegerValue == (int)BuiltInCategory.OST_StructuralColumns;
+            return elem.Category != null &&
+                   elem.Category.Id.IntegerValue == (int)BuiltInCategory.OST_StructuralFraming;
         }
 
         public bool AllowReference(Reference reference, XYZ position)
@@ -109,106 +106,115 @@ namespace add
             return false;
         }
     }
-    public static class ColumnRebarService
+
+    public static class BeamRebarService
     {
         public static void CreateRebarZoned(
             Document doc,
-            FamilyInstance column,
+            FamilyInstance beam,
             RebarBarType tieBarType,
             RebarHookType hookType,
+            double cover,
             double maxSpacingCenter,
             double spacingEndZones,
-            int nBottom,
-            int nTop,
+            int nLeft,
+            int nRight,
             double minConfLength
         )
         {
-            Transform t = column.GetTransform();
+            Transform t = beam.GetTransform();
             Transform inv = t.Inverse;
 
-            (XYZ minL, XYZ maxL) = GetlocalExtents(column, inv);
+            (XYZ minL, XYZ maxL) = GetLocalExtents(beam, inv);
 
-            double columnHeight = maxL.Z - minL.Z;
-            if (columnHeight <= 0.0) throw new InvalidOperationException("La altura de la columna debe ser mayor que cero");
+            double beamLength = maxL.X - minL.X;
+            if (beamLength <= 0.0)
+                throw new InvalidOperationException("La longitud de la viga debe ser mayor que cero.");
 
-            double conf = Math.Max(columnHeight / 6.0, minConfLength);
+            double conf = Math.Max(beamLength / 6.0, minConfLength);
 
-            double midLen = columnHeight - 2 * conf;
-            if (midLen < 0.0) midLen = 0;
-
-            
-
-            double cover = UnitUtils.ConvertToInternalUnits(40, UnitTypeId.Millimeters);
+            double midLen = beamLength - 2 * conf;
+            if (midLen < 0.0) midLen = 0.0;
 
             double tieDia = tieBarType.get_Parameter(BuiltInParameter.REBAR_BAR_DIAMETER).AsDouble();
+
             double off = cover + 0.5 * tieDia;
 
-            double x1 = minL.X + off;
-            double x2 = maxL.X - off;
             double y1 = minL.Y + off;
             double y2 = maxL.Y - off;
+            double z1 = minL.Z + off;
+            double z2 = maxL.Z - off;
 
-            if (x2 <= x1 || y2 <= y1)
-                throw new InvalidOperationException("Sección demasiado pequeña para el recubrimiento/diámetro seleccionado");
+            if (y2 <= y1 || z2 <= z1)
+                throw new InvalidOperationException("La sección de la viga es demasiado pequeña para el recubrimiento y diámetro seleccionados.");
 
-            double firstTie = UnitUtils.ConvertToInternalUnits(50, UnitTypeId.Millimeters);
+            double firstTie = AddBeamRebarCommand.MmToFt(50);
 
-            double z0 = minL.Z /*+ firstTie - 0.5 * tieDia*/;
+            double x0 = minL.X;
 
-            List <Curve> profileLocal = CreateRectProfileLocal(x1, x2, y1, y2, z0, tieDia);
+            List<Curve> profileLocal = CreateRectProfileLocalYZ(x0, y1, y2, z1, z2, tieDia);
             List<Curve> profileWorld = profileLocal.Select(c => c.CreateTransformed(t)).ToList();
 
-            XYZ normal = t.BasisZ.Normalize();
+            XYZ normal = t.BasisX.Normalize();
 
-            //double spacingEndZones = AddColumnRebarCommand.MnToFt(100); // 0.10 m
-            //int nBottomCalc = CalcBarsBySpacing(conf - firstTie, spacingEndZones);
-            //int nTopCalc = CalcBarsBySpacing(conf - firstTie, spacingEndZones);
-
-            CreateTieSet(doc, column, tieBarType, hookType, profileWorld, normal,
-            startOffsetFromBase: firstTie,
-            runLength: conf - firstTie,
-            layout: LayoutKind.FixedNumber,
-            spacing: spacingEndZones,
-            number: nBottom);
-
-            double bottomEnd = firstTie + (nBottom - 1) * spacingEndZones;
-            double topStart = columnHeight - firstTie - (nTop - 1) * spacingEndZones;
-
-            double midStart = bottomEnd /*+ maxSpacingCenter*/;
-            double midAvailable = topStart - midStart;
-
-            if (midAvailable > 1e-6)
-            {
-                CreateTieSet(doc, column, tieBarType, hookType, profileWorld, normal,
-                    startOffsetFromBase: midStart /*+ AddColumnRebarCommand.MnToFt(10)*/,
-                    runLength: midAvailable,
-                    layout: LayoutKind.FixedSpacing,
-                    spacing: maxSpacingCenter,
-                    number: 0);
-            }
-
-            CreateTieSet(doc, column, tieBarType, hookType, profileWorld, normal,
-                startOffsetFromBase: columnHeight - firstTie - (nTop - 1) * spacingEndZones,
+            // Zona izquierda
+            CreateTieSet(
+                doc,
+                beam,
+                tieBarType,
+                hookType,
+                profileWorld,
+                normal,
+                startOffsetFromStart: firstTie,
                 runLength: conf - firstTie,
                 layout: LayoutKind.FixedNumber,
                 spacing: spacingEndZones,
-                number: nTop);
+                number: nLeft
+            );
+
+            double leftEnd = firstTie + (nLeft - 1) * spacingEndZones;
+            double rightStart = beamLength - firstTie - (nRight - 1) * spacingEndZones;
+
+            double midStart = leftEnd;
+            double midAvailable = rightStart - midStart;
+
+            if (midAvailable > 1e-6)
+            {
+                CreateTieSet(
+                    doc,
+                    beam,
+                    tieBarType,
+                    hookType,
+                    profileWorld,
+                    normal,
+                    startOffsetFromStart: midStart,
+                    runLength: midAvailable,
+                    layout: LayoutKind.FixedSpacing,
+                    spacing: maxSpacingCenter,
+                    number: 0
+                );
+            }
+
+            // Zona derecha
+            CreateTieSet(
+                doc,
+                beam,
+                tieBarType,
+                hookType,
+                profileWorld,
+                normal,
+                startOffsetFromStart: beamLength - firstTie - (nRight - 1) * spacingEndZones,
+                runLength: conf - firstTie,
+                layout: LayoutKind.FixedNumber,
+                spacing: spacingEndZones,
+                number: nRight
+            );
         }
 
         private enum LayoutKind
         {
             FixedNumber,
             FixedSpacing
-        }
-        private static int CalcBarsBySpacing(double runLength, double spacing)
-        {
-            if (runLength <= 0) return 2;
-
-            int n = (int)Math.Floor(runLength / spacing) + 1;
-
-            if (n < 2) n = 2;
-
-            return n;
         }
 
         private static void CreateTieSet(
@@ -218,18 +224,18 @@ namespace add
             RebarHookType hookType,
             List<Curve> profileWorld,
             XYZ normal,
-            double startOffsetFromBase,
+            double startOffsetFromStart,
             double runLength,
             LayoutKind layout,
             double spacing,
             int number
-            )
+        )
         {
-            Transform tr = Transform.CreateTranslation(normal * startOffsetFromBase);
+            Transform tr = Transform.CreateTranslation(normal * startOffsetFromStart);
             IList<Curve> movedProfile = profileWorld.Select(c => c.CreateTransformed(tr)).ToList();
 
             Rebar rebar = Rebar.CreateFromCurves(
-                doc, 
+                doc,
                 RebarStyle.StirrupTie,
                 barType,
                 hookType,
@@ -241,7 +247,7 @@ namespace add
                 RebarHookOrientation.Right,
                 true,
                 true
-                );
+            );
 
             RebarShapeDrivenAccessor acc = rebar.GetShapeDrivenAccessor();
 
@@ -265,7 +271,6 @@ namespace add
                     true,
                     true,
                     true
-
                 );
                 acc.SetLayoutAsMaximumSpacing(
                     spacing,
@@ -273,21 +278,27 @@ namespace add
                     true,
                     false,
                     false
-
                 );
+
 
             }
         }
 
-
-        private static List<Curve> CreateRectProfileLocal(double x1, double x2, double y1, double y2, double z, double tieDia)
+        private static List<Curve> CreateRectProfileLocalYZ(
+            double x,
+            double y1,
+            double y2,
+            double z1,
+            double z2,
+            double tieDia
+        )
         {
-            XYZ p1 = new XYZ(x1 - 0.5 * tieDia, y1, z);
-            XYZ p2 = new XYZ(x2, y1, z);
-            XYZ p3 = new XYZ(x2, y2, z);
-            XYZ p4 = new XYZ(x1, y2, z);
-                        
-            XYZ p5 = new XYZ(x1, y1 - 0.5 * tieDia, z);
+            // Perfil abierto tipo estribo en plano YZ
+            XYZ p1 = new XYZ(x, y1 - 0.5 * tieDia, z1);
+            XYZ p2 = new XYZ(x, y2, z1);
+            XYZ p3 = new XYZ(x, y2, z2);
+            XYZ p4 = new XYZ(x, y1, z2);
+            XYZ p5 = new XYZ(x, y1, z1 - 0.5 * tieDia);
 
             return new List<Curve>()
             {
@@ -298,11 +309,11 @@ namespace add
             };
         }
 
-        private static (XYZ min, XYZ max) GetlocalExtents(FamilyInstance column, Transform inv)
+        private static (XYZ min, XYZ max) GetLocalExtents(FamilyInstance beam, Transform inv)
         {
-            BoundingBoxXYZ bb = column.get_BoundingBox(null);
+            BoundingBoxXYZ bb = beam.get_BoundingBox(null);
             if (bb == null)
-                throw new InvalidOperationException("No se pudo obtener el bounding box de la columna");
+                throw new InvalidOperationException("No se pudo obtener el bounding box de la viga.");
 
             var vertices = new List<XYZ>()
             {
@@ -314,10 +325,10 @@ namespace add
                 new XYZ(bb.Max.X, bb.Min.Y, bb.Max.Z),
                 new XYZ(bb.Max.X, bb.Max.Y, bb.Min.Z),
                 new XYZ(bb.Max.X, bb.Max.Y, bb.Max.Z),
-
             };
 
             var local = vertices.Select(v => inv.OfPoint(v)).ToList();
+
             double minX = local.Min(p => p.X);
             double minY = local.Min(p => p.Y);
             double minZ = local.Min(p => p.Z);
@@ -327,7 +338,6 @@ namespace add
             double maxZ = local.Max(p => p.Z);
 
             return (new XYZ(minX, minY, minZ), new XYZ(maxX, maxY, maxZ));
-
         }
     }
 }
