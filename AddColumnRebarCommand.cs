@@ -343,5 +343,15 @@ namespace add
             return (new XYZ(minX, minY, minZ), new XYZ(maxX, maxY, maxZ));
 
         }
+
+        internal static void CreateRebarFloor(Document doc, FamilyInstance losa, RebarBarType tieBarType, RebarHookType hookType, double maxSpacingPositiv, double coverConcrete, bool barsAlongX)
+        {
+            throw new NotImplementedException();
+        }
+
+        internal static void CreateRebarFloor(Document doc, Floor losa, RebarBarType tieBarType, RebarHookType hookType, double maxSpacingPositiv, double coverConcrete, bool barsAlongX)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

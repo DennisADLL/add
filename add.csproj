@@ -51,6 +51,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AddBeamRebarCommand.cs" />
+    <Compile Include="AddFloorRebarCommand.cs" />
     <Compile Include="AddCutWallLinkPipeCommand.cs" />
     <Compile Include="AddDivideWallApiladoCommand.cs" />
     <Compile Include="AddColumnRebarCommand.cs" />
