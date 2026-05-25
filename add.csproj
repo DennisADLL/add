@@ -31,6 +31,9 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
+  <PropertyGroup>
+    <StartupObject />
+  </PropertyGroup>
   <ItemGroup>
     <Reference Include="RevitAPI">
       <HintPath>..\..\..\..\..\..\Program Files\Autodesk\Revit 2024\RevitAPI.dll</HintPath>
@@ -42,6 +45,7 @@
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
@@ -51,10 +55,12 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AddBeamRebarCommand.cs" />
+    <Compile Include="AddCreatePlansSelectView.cs" />
     <Compile Include="AddFloorRebarCommand.cs" />
     <Compile Include="AddCutWallLinkPipeCommand.cs" />
     <Compile Include="AddDivideWallApiladoCommand.cs" />
     <Compile Include="AddColumnRebarCommand.cs" />
+    <Compile Include="ConstructorPersona.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
